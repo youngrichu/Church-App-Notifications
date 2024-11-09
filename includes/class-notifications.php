@@ -8,6 +8,7 @@ class Church_App_Notifications {
     protected $version;
     protected $api;
     protected $admin;
+    protected $hooks;
 
     public function __construct() {
         $this->plugin_name = 'church-app-notifications';
@@ -16,14 +17,17 @@ class Church_App_Notifications {
         $this->load_dependencies();
         $this->define_admin_hooks();
         $this->define_api_hooks();
+        $this->define_post_hooks();
     }
 
     private function load_dependencies() {
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/class-api.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'admin/class-admin.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/class-hook.php';
         
         $this->api = new Church_App_Notifications_API();
         $this->admin = new Church_App_Notifications_Admin($this->get_plugin_name(), $this->get_version());
+        $this->hooks = new Church_App_Notifications_Hooks();
     }
 
     private function define_admin_hooks() {
@@ -36,6 +40,12 @@ class Church_App_Notifications {
         add_action('rest_api_init', array($this->api, 'register_routes'));
     }
 
+    private function define_post_hooks() {
+        // Add hooks for post publishing
+        add_action('publish_post', array($this->hooks, 'notify_new_post'), 10, 2);
+        add_action('transition_post_status', array($this->hooks, 'handle_post_status_transition'), 10, 3);
+    }
+
     public function get_plugin_name() {
         return $this->plugin_name;
     }
@@ -44,13 +54,11 @@ class Church_App_Notifications {
         return $this->version;
     }
 
-    /**
-     * Run the plugin
-     */
     public function run() {
-        // Initialize hooks
+        // Initialize all hooks
         $this->define_admin_hooks();
         $this->define_api_hooks();
+        $this->define_post_hooks();
 
         // Add any additional initialization here
         do_action('church_app_notifications_init');

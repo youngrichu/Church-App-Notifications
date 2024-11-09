@@ -49,7 +49,7 @@ class Church_App_Notifications_API {
             )
         ));
 
-        // Add endpoint for sending notifications to specific users
+        // Add endpoint for sending notifications
         register_rest_route($this->namespace, '/notifications/send', array(
             'methods' => 'POST',
             'callback' => array($this, 'send_notification'),
@@ -59,20 +59,26 @@ class Church_App_Notifications_API {
                     'required' => true,
                     'type' => 'integer',
                     'description' => 'User ID (0 for all users)',
+                    'validate_callback' => function($param) {
+                        return is_numeric($param);
+                    }
                 ),
                 'title' => array(
                     'required' => true,
                     'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
                 ),
                 'body' => array(
                     'required' => true,
                     'type' => 'string',
+                    'sanitize_callback' => 'sanitize_textarea_field'
                 ),
                 'type' => array(
                     'required' => false,
                     'type' => 'string',
                     'default' => 'general',
-                ),
+                    'sanitize_callback' => 'sanitize_text_field'
+                )
             )
         ));
     
@@ -182,56 +188,32 @@ class Church_App_Notifications_API {
             global $wpdb;
             $table_name = $wpdb->prefix . 'app_notifications';
             
-            // Get authorization header
-            $auth_header = $request->get_header('Authorization');
-            error_log('Auth header received: ' . $auth_header);
-
-            if (!$auth_header) {
-                return new WP_Error(
-                    'no_auth_token', 
-                    'No authentication token found', 
-                    array('status' => 401)
-                );
-            }
-
-            // Extract token
-            if (!preg_match('/Bearer\s(\S+)/', $auth_header, $matches)) {
-                error_log('Invalid Authorization header format');
-                return new WP_Error(
-                    'invalid_auth_format', 
-                    'Invalid authorization format', 
-                    array('status' => 401)
-                );
-            }
-
-            $token = $matches[1];
-            error_log('Extracted token: ' . $token);
-
-            $user_id = $this->get_user_id_from_token($token);
-            error_log('User ID from token: ' . ($user_id ? $user_id : 'null'));
+            error_log('Getting notifications from table: ' . $table_name);
             
-            if (!$user_id) {
-                return new WP_Error(
-                    'invalid_token', 
-                    'Invalid or expired token', 
-                    array('status' => 401)
-                );
+            // Verify table exists
+            $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'");
+            error_log('Table exists check: ' . ($table_exists ? 'Yes' : 'No'));
+            
+            if (!$table_exists) {
+                error_log('Notifications table does not exist!');
+                return new WP_Error('table_missing', 'Notifications table does not exist', array('status' => 500));
             }
 
-            // Get notifications for this user and global notifications
-            $notifications = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM $table_name WHERE user_id = %d OR user_id = 0 ORDER BY created_at DESC",
-                $user_id
-            ));
-
+            // Get notifications query
+            $query = "SELECT * FROM $table_name ORDER BY created_at DESC";
+            error_log('Running query: ' . $query);
+            
+            $notifications = $wpdb->get_results($query);
+            
             if ($wpdb->last_error) {
-                error_log('Database error: ' . $wpdb->last_error);
-                return new WP_Error('db_error', 'Database error occurred', array('status' => 500));
+                error_log('Database error in get_notifications: ' . $wpdb->last_error);
+                return new WP_Error('db_error', 'Database error: ' . $wpdb->last_error, array('status' => 500));
             }
 
-            error_log('Returning notifications for user ' . $user_id . ': ' . print_r($notifications, true));
+            error_log('Retrieved notifications: ' . print_r($notifications, true));
+            
             return new WP_REST_Response($notifications, 200);
-
+            
         } catch (Exception $e) {
             error_log('Error in get_notifications: ' . $e->getMessage());
             return new WP_Error('server_error', $e->getMessage(), array('status' => 500));

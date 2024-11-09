@@ -5,11 +5,16 @@ A WordPress plugin for managing push notifications in the Church App.
 ## Features
 
 - Send push notifications to app users
-- Automatic notifications for new blog posts
+- Automatic notifications for new blog posts with:
+  - Post title and excerpt
+  - Featured image (if available)
+  - Direct link to post
 - Admin interface for managing notifications
 - REST API endpoints for notifications
 - Device token management
 - Notification history tracking
+- Duplicate prevention system
+- Support for multilingual content (Amharic/English)
 
 ## Installation
 

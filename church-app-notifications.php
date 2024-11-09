@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Church App Notifications
  * Description: Handles push notifications for the Church App
- * Version: 1.0.0
+ * Version: 2.0.0
  * Author: Habtamu
  * Author URI: https://github.com/youngrichu
  * Text Domain: church-app-notifications
@@ -15,7 +15,7 @@ if (!defined('WPINC')) {
 }
 
 // Define plugin constants
-define('CHURCH_APP_NOTIFICATIONS_VERSION', '1.0.0');
+define('CHURCH_APP_NOTIFICATIONS_VERSION', '2.0.0');
 define('CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CHURCH_APP_NOTIFICATIONS_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -23,6 +23,7 @@ define('CHURCH_APP_NOTIFICATIONS_PLUGIN_URL', plugin_dir_url(__FILE__));
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-notifications.php';
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-api.php';
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-database.php';
+require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-hook.php';
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'admin/class-admin.php';
 
 // Activation hook
@@ -32,10 +33,20 @@ register_activation_hook(__FILE__, function() {
     $database->create_tables();
 });
 
+// Deactivation hook
+register_deactivation_hook(__FILE__, function() {
+    require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-database.php';
+    $database = new Church_App_Notifications_DB();
+    $database->drop_tables();
+});
+
 // Initialize the plugin
 function run_church_app_notifications() {
     $plugin = new Church_App_Notifications();
     $plugin->run();
+    
+    // Initialize hooks
+    $hooks = new Church_App_Notifications_Hooks();
 }
 
 // Hook into WordPress init
