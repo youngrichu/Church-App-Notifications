@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Church App Notifications
  * Description: Handles push notifications for the Church App
- * Version: 2.0.0
+ * Version: 2.1.0
  * Author: Habtamu
  * Author URI: https://github.com/youngrichu
  * Text Domain: church-app-notifications
@@ -15,7 +15,7 @@ if (!defined('WPINC')) {
 }
 
 // Define plugin constants
-define('CHURCH_APP_NOTIFICATIONS_VERSION', '2.0.0');
+define('CHURCH_APP_NOTIFICATIONS_VERSION', '2.1.0');
 define('CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CHURCH_APP_NOTIFICATIONS_PLUGIN_URL', plugin_dir_url(__FILE__));
 

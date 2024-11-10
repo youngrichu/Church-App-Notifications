@@ -9,6 +9,9 @@ class Church_App_Notifications_Admin {
     public function __construct($plugin_name, $version) {
         $this->plugin_name = $plugin_name;
         $this->version = $version;
+        
+        // Add this line to load the list table class
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/class-notifications-list-table.php';
     }
 
     public function add_plugin_admin_menu() {

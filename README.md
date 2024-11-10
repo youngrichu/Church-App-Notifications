@@ -9,12 +9,33 @@ A WordPress plugin for managing push notifications in the Church App.
   - Post title and excerpt
   - Featured image (if available)
   - Direct link to post
-- Admin interface for managing notifications
+- Admin interface for managing notifications:
+  - WordPress-style list table with bulk actions
+  - Sortable columns
+  - Status filters (All/Read/Unread)
+  - Pagination
 - REST API endpoints for notifications
 - Device token management
 - Notification history tracking
 - Duplicate prevention system
 - Support for multilingual content (Amharic/English)
+
+## Changelog
+
+### 2.1.0 - 2024-02-20
+- Added WordPress-style list table for notifications management
+- Added bulk delete functionality
+- Added status filters (All/Read/Unread)
+- Added sortable columns
+- Added pagination
+- Improved security with nonce verification
+- Added per-row actions
+
+### 2.0.0 - 2024-02-01
+- Initial public release
+- Basic notifications functionality
+- REST API endpoints
+- Admin interface
 
 ## Installation
 
