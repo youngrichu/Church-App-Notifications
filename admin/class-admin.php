@@ -30,7 +30,7 @@ class Church_App_Notifications_Admin {
             'Send Notification',
             'Send Notification',
             'manage_options',
-            'church-app-send-notification',
+            'church-app-notifications-send',
             array($this, 'display_send_notification_page')
         );
 
@@ -51,7 +51,7 @@ class Church_App_Notifications_Admin {
 
     public function display_send_notification_page() {
         // Include the send notification partial
-        require_once plugin_dir_path(dirname(__FILE__)) . 'admin/partials/send-notification.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'admin/partials/send-notification-page.php';
     }
 
     public function display_settings_page() {
@@ -61,9 +61,21 @@ class Church_App_Notifications_Admin {
 
     public function enqueue_styles() {
         wp_enqueue_style($this->plugin_name, plugin_dir_url(__FILE__) . 'css/admin.css', array(), $this->version, 'all');
+        
+        // Add media uploader styles
+        wp_enqueue_media();
     }
 
     public function enqueue_scripts() {
         wp_enqueue_script($this->plugin_name, plugin_dir_url(__FILE__) . 'js/admin.js', array('jquery'), $this->version, false);
+        
+        // Add media uploader script
+        wp_enqueue_script(
+            'notifications-media-upload',
+            plugin_dir_url(__FILE__) . 'js/media-upload.js',
+            array('jquery'),
+            $this->version,
+            true
+        );
     }
 }

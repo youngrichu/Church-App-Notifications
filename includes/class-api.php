@@ -4,6 +4,11 @@
  */
 class Church_App_Notifications_API {
     private $namespace = 'church-app/v1';
+    private $expo_push;
+
+    public function __construct() {
+        $this->expo_push = new Church_App_Notifications_Expo_Push();
+    }
 
     public function register_routes() {
         // Log registration attempt
@@ -78,10 +83,37 @@ class Church_App_Notifications_API {
                     'type' => 'string',
                     'default' => 'general',
                     'sanitize_callback' => 'sanitize_text_field'
+                ),
+                'image_url' => array(
+                    'required' => false,
+                    'type' => 'string',
+                    'sanitize_callback' => 'esc_url_raw'
+                ),
+                'reference_id' => array(
+                    'required' => false,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
+                ),
+                'reference_type' => array(
+                    'required' => false,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
+                ),
+                'reference_url' => array(
+                    'required' => false,
+                    'type' => 'string',
+                    'sanitize_callback' => 'esc_url_raw'
                 )
             )
         ));
-    
+
+        // Test endpoint
+        register_rest_route($this->namespace, '/test-push', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'test_push_notification'),
+            'permission_callback' => '__return_true' // Allow anyone to test
+        ));
+
         // Log after registration
         error_log('Routes registered successfully');
     }
@@ -90,14 +122,14 @@ class Church_App_Notifications_API {
     public function init() {
         add_action('rest_api_init', array($this, 'register_routes'));
     }
-    
+
     private function get_user_from_jwt($request) {
         try {
             error_log('Starting get_user_from_jwt');
-            
+
             $auth_header = $request->get_header('Authorization');
             error_log('Auth header: ' . print_r($auth_header, true));
-            
+
             if (!$auth_header) {
                 error_log('No Authorization header found');
                 return null;
@@ -112,22 +144,31 @@ class Church_App_Notifications_API {
             $jwt = $matches[1];
             error_log('Extracted JWT: ' . $jwt);
 
-            // Use Simple JWT Login plugin's authentication
-            require_once(ABSPATH . 'wp-content/plugins/simple-jwt-login/src/Modules/SimpleJWTLoginAuthentication.php');
-            $auth = new \SimpleJWTLogin\Modules\SimpleJWTLoginAuthentication();
-            
-            try {
-                $user_data = $auth->getUserFromToken($jwt);
-                if ($user_data && isset($user_data->ID)) {
-                    error_log('Successfully authenticated user: ' . $user_data->ID);
-                    return $user_data;
-                }
-            } catch (Exception $e) {
-                error_log('JWT Authentication error: ' . $e->getMessage());
+            // Decode JWT token
+            $token_parts = explode('.', $jwt);
+            if (count($token_parts) !== 3) {
+                error_log('Invalid JWT format');
+                return null;
             }
 
-            error_log('Failed to authenticate user with JWT');
-            return null;
+            // Decode payload
+            $payload = base64_decode(str_replace(['-', '_'], ['+', '/'], $token_parts[1]));
+            $payload_data = json_decode($payload);
+
+            if (!$payload_data || !isset($payload_data->id)) {
+                error_log('Invalid JWT payload');
+                return null;
+            }
+
+            // Get user by ID
+            $user = get_user_by('id', $payload_data->id);
+            if (!$user) {
+                error_log('User not found for ID: ' . $payload_data->id);
+                return null;
+            }
+
+            error_log('Successfully authenticated user: ' . $user->ID);
+            return $user;
 
         } catch (Exception $e) {
             error_log('Error in get_user_from_jwt: ' . $e->getMessage());
@@ -155,7 +196,7 @@ class Church_App_Notifications_API {
             $payload = $parts[1];
             $payload = str_replace(['-', '_'], ['+', '/'], $payload);
             $payload = base64_decode($payload);
-            
+
             if ($payload === false) {
                 error_log('Failed to decode base64 payload');
                 return null;
@@ -187,33 +228,64 @@ class Church_App_Notifications_API {
         try {
             global $wpdb;
             $table_name = $wpdb->prefix . 'app_notifications';
-            
+
             error_log('Getting notifications from table: ' . $table_name);
-            
+
+            // Get user from JWT token
+            $user = $this->get_user_from_jwt($request);
+            if (!$user) {
+                error_log('No valid user found in JWT token');
+                return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
+            }
+
             // Verify table exists
             $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'");
             error_log('Table exists check: ' . ($table_exists ? 'Yes' : 'No'));
-            
+
             if (!$table_exists) {
                 error_log('Notifications table does not exist!');
                 return new WP_Error('table_missing', 'Notifications table does not exist', array('status' => 500));
             }
 
-            // Get notifications query
-            $query = "SELECT * FROM $table_name ORDER BY created_at DESC";
+            // Get pagination parameters
+            $page = isset($request['page']) ? max(1, intval($request['page'])) : 1;
+            $per_page = isset($request['per_page']) ? min(50, max(1, intval($request['per_page']))) : 20;
+            $offset = ($page - 1) * $per_page;
+
+            // Prepare the query with user filtering and pagination
+            $query = $wpdb->prepare(
+                "SELECT SQL_CALC_FOUND_ROWS * FROM $table_name 
+                WHERE user_id = %d OR user_id = 0 
+                ORDER BY created_at DESC 
+                LIMIT %d OFFSET %d",
+                $user->ID,
+                $per_page,
+                $offset
+            );
+
             error_log('Running query: ' . $query);
-            
+
+            // Get notifications
             $notifications = $wpdb->get_results($query);
-            
+
             if ($wpdb->last_error) {
                 error_log('Database error in get_notifications: ' . $wpdb->last_error);
                 return new WP_Error('db_error', 'Database error: ' . $wpdb->last_error, array('status' => 500));
             }
 
+            // Get total count for pagination
+            $total_items = $wpdb->get_var("SELECT FOUND_ROWS()");
+            $total_pages = ceil($total_items / $per_page);
+
             error_log('Retrieved notifications: ' . print_r($notifications, true));
-            
-            return new WP_REST_Response($notifications, 200);
-            
+
+            // Add pagination headers
+            $response = new WP_REST_Response($notifications, 200);
+            $response->header('X-WP-Total', $total_items);
+            $response->header('X-WP-TotalPages', $total_pages);
+
+            return $response;
+
         } catch (Exception $e) {
             error_log('Error in get_notifications: ' . $e->getMessage());
             return new WP_Error('server_error', $e->getMessage(), array('status' => 500));
@@ -221,78 +293,93 @@ class Church_App_Notifications_API {
     }
 
     public function send_notification($request) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'app_notifications';
-        
-        $user_id = $request['user_id'];
-        $title = sanitize_text_field($request['title']);
-        $body = sanitize_textarea_field($request['body']);
-        $type = sanitize_text_field($request['type']);
+        try {
+            global $wpdb;
+            $table_name = $wpdb->prefix . 'app_notifications';
 
-        // Insert notification into database
-        $result = $wpdb->insert(
-            $table_name,
-            array(
-                'user_id' => $user_id,
-                'title' => $title,
-                'body' => $body,
-                'type' => $type,
-                'is_read' => '0',
-                'created_at' => current_time('mysql')
-            ),
-            array('%d', '%s', '%s', '%s', '%s', '%s')
-        );
+            // Get parameters from request
+            $params = $request->get_params();
+            
+            // Validate required parameters
+            if (empty($params['title']) || empty($params['body'])) {
+                return new WP_Error(
+                    'missing_params',
+                    'Title and body are required',
+                    array('status' => 400)
+                );
+            }
 
-        if ($result === false) {
+            $user_id = isset($params['user_id']) ? intval($params['user_id']) : 0;
+            $title = sanitize_text_field($params['title']);
+            $body = wp_kses_post($params['body']);
+            $type = isset($params['type']) ? sanitize_text_field($params['type']) : 'general';
+            $image_url = isset($params['image_url']) ? esc_url_raw($params['image_url']) : '';
+            $reference_id = isset($params['reference_id']) ? sanitize_text_field($params['reference_id']) : '';
+            $reference_type = isset($params['reference_type']) ? sanitize_text_field($params['reference_type']) : '';
+            $reference_url = isset($params['reference_url']) ? esc_url_raw($params['reference_url']) : '';
+
+            // If image_url is provided but reference_url is not, use image_url as reference_url
+            if (!empty($image_url) && empty($reference_url)) {
+                $reference_url = $image_url;
+            }
+
+            // Insert notification into database
+            $result = $wpdb->insert(
+                $table_name,
+                array(
+                    'user_id' => $user_id,
+                    'title' => $title,
+                    'body' => $body,
+                    'type' => $type,
+                    'image_url' => $image_url,
+                    'reference_id' => $reference_id,
+                    'reference_type' => $reference_type,
+                    'reference_url' => $reference_url,
+                    'is_read' => '0',
+                    'created_at' => current_time('mysql')
+                ),
+                array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')
+            );
+
+            if ($result === false) {
+                error_log('Database error in send_notification: ' . $wpdb->last_error);
+                return new WP_Error(
+                    'db_error',
+                    'Failed to create notification: ' . $wpdb->last_error,
+                    array('status' => 500)
+                );
+            }
+
+            // Get the inserted notification ID
+            $notification_id = $wpdb->insert_id;
+
+            // Send push notification via Expo
+            if (!empty($image_url)) {
+                try {
+                    $this->expo_push->send_notification($notification_id);
+                } catch (Exception $e) {
+                    error_log('Error sending push notification: ' . $e->getMessage());
+                }
+            } else {
+                $this->expo_push->send_notification($notification_id);
+            }
+
+            return new WP_REST_Response(
+                array(
+                    'id' => $notification_id,
+                    'message' => 'Notification created successfully'
+                ),
+                201
+            );
+
+        } catch (Exception $e) {
+            error_log('Error in send_notification: ' . $e->getMessage());
             return new WP_Error(
-                'db_error',
-                'Failed to create notification',
+                'server_error',
+                'Server error: ' . $e->getMessage(),
                 array('status' => 500)
             );
         }
-
-        // Send push notification only to specified user(s)
-        if ($user_id > 0) {
-            // Send to specific user
-            $token = get_user_meta($user_id, 'expo_push_token', true);
-            if ($token) {
-                $this->send_push_notification($token, $title, $body);
-            }
-        } else {
-            // Send to all users
-            $users = get_users();
-            foreach ($users as $user) {
-                $token = get_user_meta($user->ID, 'expo_push_token', true);
-                if ($token) {
-                    $this->send_push_notification($token, $title, $body);
-                }
-            }
-        }
-
-        return new WP_REST_Response(array(
-            'success' => true,
-            'message' => 'Notification sent successfully'
-        ), 200);
-    }
-
-    private function send_push_notification($token, $title, $body) {
-        $message = array(
-            'to' => $token,
-            'sound' => 'default',
-            'title' => $title,
-            'body' => $body,
-        );
-
-        $ch = curl_init('https://exp.host/--/api/v2/push/send');
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($message));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        error_log('Push notification sent to ' . $token . ': ' . $response);
-        return $response;
     }
 
     public function mark_notification_read($request) {
@@ -341,16 +428,90 @@ class Church_App_Notifications_API {
         );
     }
 
-private static function isValidToken($token) {
-    try {
-        // Just check if the token exists and has the correct format
-        $parts = explode('.', $token);
-        if (count($parts) !== 3) return false;
+    private static function isValidToken($token) {
+        try {
+            // Just check if the token exists and has the correct format
+            $parts = explode('.', $token);
+            if (count($parts) !== 3) return false;
 
-        // Basic structure validation is enough since our tokens don't have expiration
-        return true;
-    } catch (Exception $e) {
-        return false;
+            // Basic structure validation is enough since our tokens don't have expiration
+            return true;
+        } catch (Exception $e) {
+            return false;
+        }
     }
-}
+
+    /**
+     * Check if user has admin permission
+     */
+    public function check_admin_permission() {
+        return current_user_can('manage_options');
+    }
+
+    /**
+     * Test push notification endpoint
+     */
+    public function test_push_notification($request) {
+        try {
+            global $wpdb;
+            $table_name = $wpdb->prefix . 'app_notifications';
+
+            // Simulate event data
+            $event_title = isset($request['title']) ? $request['title'] : 'Test Event';
+            $event_date = date('Y-m-d H:i:s');
+            $event_location = isset($request['location']) ? $request['location'] : 'Dubai Debremewi Church';
+            $event_id = time(); // Simulate an event ID
+
+            // Create notification data exactly like an event
+            $notification_data = array(
+                'user_id' => 0, // Send to all users
+                'title' => sprintf(__('New Event: %s', 'church-events-manager'), $event_title),
+                'body' => sprintf(
+                    __('New event scheduled for %s at %s', 'church-events-manager'),
+                    date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($event_date)),
+                    $event_location
+                ),
+                'type' => 'event',
+                'reference_id' => $event_id,
+                'reference_type' => 'church_event',
+                'reference_url' => "dubaidebremewi://events/{$event_id}",
+                'image_url' => isset($request['image_url']) ? $request['image_url'] : '',
+                'created_at' => current_time('mysql')
+            );
+
+            error_log('Creating test event notification: ' . print_r($notification_data, true));
+
+            // Insert notification
+            $result = $wpdb->insert(
+                $table_name,
+                $notification_data,
+                array(
+                    '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s'
+                )
+            );
+
+            if ($result === false) {
+                error_log('Failed to insert test notification: ' . $wpdb->last_error);
+                return new WP_Error('notification_error', 'Failed to create test notification');
+            }
+
+            $notification_id = $wpdb->insert_id;
+            error_log('Created test notification with ID: ' . $notification_id);
+
+            // Send push notification using Expo
+            $expo_push = new Church_App_Notifications_Expo_Push();
+            $sent = $expo_push->send_notification($notification_id);
+
+            return array(
+                'success' => $sent,
+                'message' => $sent ? 'Test event notification sent successfully' : 'Failed to send test notification',
+                'notification_id' => $notification_id,
+                'notification_data' => $notification_data
+            );
+
+        } catch (Exception $e) {
+            error_log('Error in test_push_notification: ' . $e->getMessage());
+            return new WP_Error('notification_error', $e->getMessage());
+        }
+    }
 }

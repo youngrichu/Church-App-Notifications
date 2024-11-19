@@ -15,12 +15,21 @@ A WordPress plugin for managing push notifications in the Church App.
   - Status filters (All/Read/Unread)
   - Pagination
 - REST API endpoints for notifications
-- Device token management
+- Secure device token management:
+  - Token validation
+  - Automatic cleanup of old tokens
+  - Device type tracking
 - Notification history tracking
 - Duplicate prevention system
 - Support for multilingual content (Amharic/English)
 
 ## Changelog
+
+### 2.2.0 - 2024-01-08
+- Added secure token registration endpoint with JWT authentication
+- Added automatic token cleanup system
+- Added device type tracking
+- Improved token validation and security
 
 ### 2.1.0 - 2024-02-20
 - Added WordPress-style list table for notifications management
@@ -45,9 +54,35 @@ A WordPress plugin for managing push notifications in the Church App.
 
 ## API Endpoints
 
+### Notifications
 - `GET /wp-json/church-app/v1/notifications` - Get notifications
-- `POST /wp-json/church-app/v1/notifications/register-token` - Register device token
 - `PUT /wp-json/church-app/v1/notifications/{id}/read` - Mark notification as read
+
+### Token Management
+- `POST /wp-json/church-app/v1/notifications/register-token` - Register device token
+  - Requires JWT authentication
+  - Request body:
+    ```json
+    {
+      "token": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]",
+      "device_type": "ios" // optional
+    }
+    ```
+  - Success response:
+    ```json
+    {
+      "success": true,
+      "message": "Token registered successfully"
+    }
+    ```
+
+## Security
+
+- JWT authentication required for token registration
+- Input validation and sanitization
+- Protection against duplicate token registrations
+- Automatic cleanup of unused tokens
+- Secure token storage
 
 ## Requirements
 

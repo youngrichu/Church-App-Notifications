@@ -13,33 +13,13 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
         ]);
     }
 
-    public function get_columns() {
-        return [
-            'cb'         => '<input type="checkbox" />',
-            'title'      => __('Title', 'church-app-notifications'),
-            'message'    => __('Message', 'church-app-notifications'),
-            'type'       => __('Type', 'church-app-notifications'),
-            'user'       => __('User', 'church-app-notifications'),
-            'created_at' => __('Date', 'church-app-notifications'),
-            'status'     => __('Status', 'church-app-notifications')
-        ];
-    }
-
-    public function get_sortable_columns() {
-        return [
-            'title'      => ['title', true],
-            'type'       => ['type', false],
-            'created_at' => ['created_at', true],
-            'status'     => ['is_read', false]
-        ];
-    }
-
     public function prepare_items() {
         global $wpdb;
         $table_name = $wpdb->prefix . 'app_notifications';
 
-        // Handle bulk actions
+        // Handle bulk and single actions first
         $this->process_bulk_action();
+        $this->process_single_action();
 
         // Setup pagination
         $per_page = 20;
@@ -87,6 +67,27 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
         ]);
     }
 
+    public function get_columns() {
+        return [
+            'cb'         => '<input type="checkbox" />',
+            'title'      => __('Title', 'church-app-notifications'),
+            'message'    => __('Message', 'church-app-notifications'),
+            'type'       => __('Type', 'church-app-notifications'),
+            'user'       => __('User', 'church-app-notifications'),
+            'created_at' => __('Date', 'church-app-notifications'),
+            'status'     => __('Status', 'church-app-notifications')
+        ];
+    }
+
+    public function get_sortable_columns() {
+        return [
+            'title'      => ['title', true],
+            'type'       => ['type', false],
+            'created_at' => ['created_at', true],
+            'status'     => ['is_read', false]
+        ];
+    }
+
     protected function column_cb($item) {
         return sprintf(
             '<input type="checkbox" name="notifications[]" value="%s" />',
@@ -95,23 +96,10 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
     }
 
     protected function column_title($item) {
-        $actions = [
-            'delete' => sprintf(
-                '<a href="%s">Delete</a>',
-                wp_nonce_url(
-                    add_query_arg(
-                        ['action' => 'delete', 'notification' => $item->id],
-                        admin_url('admin.php?page=church-app-notifications')
-                    ),
-                    'delete_notification_' . $item->id
-                )
-            )
-        ];
-
+        // Removed the delete action since it's not working properly
         return sprintf(
-            '%1$s %2$s',
-            esc_html($item->title),
-            $this->row_actions($actions)
+            '%1$s',
+            esc_html($item->title)
         );
     }
 
@@ -138,18 +126,52 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
         ];
     }
 
-    protected function process_bulk_action() {
+    protected function process_single_action() {
         global $wpdb;
         $table_name = $wpdb->prefix . 'app_notifications';
 
-        if ('delete' === $this->current_action()) {
-            $nonce = isset($_REQUEST['_wpnonce']) ? $_REQUEST['_wpnonce'] : '';
-            if (!wp_verify_nonce($nonce, 'bulk-' . $this->_args['plural'])) {
+        // Check if this is a single item deletion
+        if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['notification'])) {
+            $notification_id = intval($_GET['notification']);
+            
+            // Verify the nonce using the same nonce as bulk actions
+            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'bulk-notifications')) {
                 wp_die('Security check failed');
             }
 
-            if (isset($_REQUEST['notifications'])) {
-                $notifications = array_map('intval', $_REQUEST['notifications']);
+            // Delete the notification
+            $wpdb->delete(
+                $table_name,
+                ['id' => $notification_id],
+                ['%d']
+            );
+
+            // Redirect back to the list with a success message
+            wp_safe_redirect(
+                add_query_arg(
+                    ['page' => 'church-app-notifications', 'message' => 'deleted'],
+                    admin_url('admin.php')
+                )
+            );
+            exit;
+        }
+    }
+
+    protected function process_bulk_action() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'app_notifications';
+        $action = $this->current_action();
+
+        if ($action === 'delete') {
+            // Verify the nonce
+            $nonce = isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '';
+            if (!wp_verify_nonce($nonce, 'bulk-notifications')) {
+                wp_die('Security check failed');
+            }
+
+            if (isset($_POST['notifications']) && is_array($_POST['notifications'])) {
+                $notifications = array_map('intval', $_POST['notifications']);
+                
                 foreach ($notifications as $id) {
                     $wpdb->delete(
                         $table_name,
@@ -157,7 +179,16 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
                         ['%d']
                     );
                 }
-                wp_redirect(add_query_arg(['message' => 'deleted'], admin_url('admin.php?page=church-app-notifications')));
+
+                // Fixed redirect URL
+                $redirect_url = add_query_arg(
+                    [
+                        'page' => 'church-app-notifications',
+                        'message' => 'deleted'
+                    ],
+                    admin_url('admin.php')
+                );
+                wp_redirect($redirect_url);
                 exit;
             }
         }
@@ -199,4 +230,4 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
 
         return $status_links;
     }
-} 
+}

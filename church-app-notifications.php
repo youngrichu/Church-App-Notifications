@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Church App Notifications
  * Description: Handles push notifications for the Church App
- * Version: 2.1.0
+ * Version: 2.3.0
  * Author: Habtamu
  * Author URI: https://github.com/youngrichu
  * Text Domain: church-app-notifications
@@ -15,7 +15,7 @@ if (!defined('WPINC')) {
 }
 
 // Define plugin constants
-define('CHURCH_APP_NOTIFICATIONS_VERSION', '2.1.0');
+define('CHURCH_APP_NOTIFICATIONS_VERSION', '2.3.0');
 define('CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CHURCH_APP_NOTIFICATIONS_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -24,6 +24,9 @@ require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-notifications
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-api.php';
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-database.php';
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-hook.php';
+require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-token-handler.php';
+require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-expo-push.php';
+require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-blog-notifications.php';
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'admin/class-admin.php';
 
 // Activation hook
@@ -47,6 +50,10 @@ function run_church_app_notifications() {
     
     // Initialize hooks
     $hooks = new Church_App_Notifications_Hooks();
+    
+    // Initialize token handler
+    $token_handler = new Church_App_Notifications_Token_Handler();
+    add_action('rest_api_init', array($token_handler, 'register_routes'));
 }
 
 // Hook into WordPress init
