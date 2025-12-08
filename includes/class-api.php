@@ -2,15 +2,20 @@
 /**
  * API functionality for notifications
  */
-class Church_App_Notifications_API {
+class Church_App_Notifications_API
+{
     private $namespace = 'church-app/v1';
     private $expo_push;
+    private $db;
 
-    public function __construct() {
+    public function __construct()
+    {
         $this->expo_push = new Church_App_Notifications_Expo_Push();
+        $this->db = new Church_App_Notifications_DB();
     }
 
-    public function register_routes() {
+    public function register_routes()
+    {
         // Log registration attempt
         error_log('Registering notification routes at: ' . $this->namespace);
 
@@ -20,7 +25,7 @@ class Church_App_Notifications_API {
         // Add a debug endpoint with proper namespace
         register_rest_route($this->namespace, '/test', array(
             'methods' => WP_REST_Server::READABLE, // Use proper constant for GET
-            'callback' => function() {
+            'callback' => function () {
                 return new WP_REST_Response(array(
                     'status' => 'ok',
                     'message' => 'Notifications API is working',
@@ -47,7 +52,7 @@ class Church_App_Notifications_API {
             'permission_callback' => '__return_true', // Temporarily allow all for testing
             'args' => array(
                 'id' => array(
-                    'validate_callback' => function($param) {
+                    'validate_callback' => function ($param) {
                         return is_numeric($param);
                     }
                 )
@@ -64,7 +69,7 @@ class Church_App_Notifications_API {
                     'required' => true,
                     'type' => 'integer',
                     'description' => 'User ID (0 for all users)',
-                    'validate_callback' => function($param) {
+                    'validate_callback' => function ($param) {
                         return is_numeric($param);
                     }
                 ),
@@ -114,16 +119,32 @@ class Church_App_Notifications_API {
             'permission_callback' => '__return_true' // Allow anyone to test
         ));
 
+        // Mark all notifications as read for the authenticated user
+        register_rest_route($this->namespace, '/notifications/mark-all-read', array(
+            'methods' => 'PUT',
+            'callback' => array($this, 'mark_all_notifications_read'),
+            'permission_callback' => '__return_true'
+        ));
+
+        // Get unread notification count for the authenticated user
+        register_rest_route($this->namespace, '/notifications/unread-count', array(
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => array($this, 'get_unread_count'),
+            'permission_callback' => '__return_true'
+        ));
+
         // Log after registration
         error_log('Routes registered successfully');
     }
 
     // Add this function to your class to ensure the plugin is loaded properly
-    public function init() {
+    public function init()
+    {
         add_action('rest_api_init', array($this, 'register_routes'));
     }
 
-    private function get_user_from_jwt($request) {
+    private function get_user_from_jwt($request)
+    {
         try {
             error_log('Starting get_user_from_jwt');
 
@@ -176,7 +197,8 @@ class Church_App_Notifications_API {
         }
     }
 
-    private function get_user_id_from_token($token) {
+    private function get_user_id_from_token($token)
+    {
         try {
             error_log('Validating token: ' . $token);
 
@@ -224,10 +246,12 @@ class Church_App_Notifications_API {
         }
     }
 
-    public function get_notifications($request) {
+    public function get_notifications($request)
+    {
         try {
             global $wpdb;
             $table_name = $wpdb->prefix . 'app_notifications';
+            $reads_table = $this->db->get_reads_table();
 
             error_log('Getting notifications from table: ' . $table_name);
 
@@ -252,12 +276,19 @@ class Church_App_Notifications_API {
             $per_page = isset($request['per_page']) ? min(50, max(1, intval($request['per_page']))) : 20;
             $offset = ($page - 1) * $per_page;
 
-            // Prepare the query with user filtering and pagination
+            // Prepare the query with user filtering, per-user read status via JOIN, and pagination
             $query = $wpdb->prepare(
-                "SELECT SQL_CALC_FOUND_ROWS * FROM $table_name 
-                WHERE user_id = %d OR user_id = 0 
-                ORDER BY created_at DESC 
+                "SELECT SQL_CALC_FOUND_ROWS 
+                    n.id, n.user_id, n.title, n.body, n.type, 
+                    n.created_at, n.reference_id, n.reference_type, 
+                    n.reference_url, n.image_url,
+                    CASE WHEN r.id IS NOT NULL THEN '1' ELSE '0' END as is_read
+                FROM $table_name n
+                LEFT JOIN $reads_table r ON n.id = r.notification_id AND r.user_id = %d
+                WHERE n.user_id = %d OR n.user_id = 0 
+                ORDER BY n.created_at DESC 
                 LIMIT %d OFFSET %d",
+                $user->ID,
                 $user->ID,
                 $per_page,
                 $offset
@@ -292,14 +323,15 @@ class Church_App_Notifications_API {
         }
     }
 
-    public function send_notification($request) {
+    public function send_notification($request)
+    {
         try {
             global $wpdb;
             $table_name = $wpdb->prefix . 'app_notifications';
 
             // Get parameters from request
             $params = $request->get_params();
-            
+
             // Validate required parameters
             if (empty($params['title']) || empty($params['body'])) {
                 return new WP_Error(
@@ -382,25 +414,25 @@ class Church_App_Notifications_API {
         }
     }
 
-    public function mark_notification_read($request) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'app_notifications';
-        $notification_id = $request['id'];
+    public function mark_notification_read($request)
+    {
+        $notification_id = intval($request['id']);
 
         // Add debug logging
         error_log('Attempting to mark notification as read: ' . $notification_id);
 
-        // Update the notification
-        $result = $wpdb->update(
-            $table_name,
-            array('is_read' => '1'),  // Make sure it's a string '1' to match the schema
-            array('id' => $notification_id),
-            array('%s'),  // Format for is_read
-            array('%d')   // Format for id
-        );
+        // Get user from JWT token
+        $user = $this->get_user_from_jwt($request);
+        if (!$user) {
+            error_log('No valid user found in JWT token for mark_notification_read');
+            return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
+        }
+
+        // Mark as read using per-user tracking
+        $result = $this->db->mark_as_read($user->ID, $notification_id);
 
         if ($result === false) {
-            error_log('Failed to update notification: ' . $wpdb->last_error);
+            error_log('Failed to mark notification as read for user: ' . $user->ID);
             return new WP_Error(
                 'update_failed',
                 'Failed to mark notification as read',
@@ -408,31 +440,92 @@ class Church_App_Notifications_API {
             );
         }
 
-        // Verify the update
-        $updated_notification = $wpdb->get_row(
-            $wpdb->prepare(
-                "SELECT * FROM $table_name WHERE id = %d",
-                $notification_id
-            )
-        );
-
-        error_log('Updated notification: ' . print_r($updated_notification, true));
+        error_log('Successfully marked notification ' . $notification_id . ' as read for user ' . $user->ID);
 
         return new WP_REST_Response(
             array(
                 'success' => true,
                 'message' => 'Notification marked as read',
-                'notification' => $updated_notification
+                'notification_id' => $notification_id,
+                'user_id' => $user->ID
             ),
             200
         );
     }
 
-    private static function isValidToken($token) {
+    /**
+     * Mark all notifications as read for the authenticated user
+     */
+    public function mark_all_notifications_read($request)
+    {
+        // Get user from JWT token
+        $user = $this->get_user_from_jwt($request);
+        if (!$user) {
+            error_log('No valid user found in JWT token for mark_all_notifications_read');
+            return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
+        }
+
+        error_log('Marking all notifications as read for user: ' . $user->ID);
+
+        // Mark all as read using database helper
+        $count = $this->db->mark_all_as_read($user->ID);
+
+        if ($count === false) {
+            error_log('Failed to mark all notifications as read for user: ' . $user->ID);
+            return new WP_Error(
+                'update_failed',
+                'Failed to mark all notifications as read',
+                array('status' => 500)
+            );
+        }
+
+        error_log('Marked ' . $count . ' notifications as read for user ' . $user->ID);
+
+        return new WP_REST_Response(
+            array(
+                'success' => true,
+                'message' => 'All notifications marked as read',
+                'count' => $count,
+                'user_id' => $user->ID
+            ),
+            200
+        );
+    }
+
+    /**
+     * Get unread notification count for the authenticated user
+     */
+    public function get_unread_count($request)
+    {
+        // Get user from JWT token
+        $user = $this->get_user_from_jwt($request);
+        if (!$user) {
+            error_log('No valid user found in JWT token for get_unread_count');
+            return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
+        }
+
+        // Get unread count using database helper
+        $count = $this->db->get_unread_count($user->ID);
+
+        error_log('Unread notification count for user ' . $user->ID . ': ' . $count);
+
+        return new WP_REST_Response(
+            array(
+                'success' => true,
+                'unread_count' => $count,
+                'user_id' => $user->ID
+            ),
+            200
+        );
+    }
+
+    private static function isValidToken($token)
+    {
         try {
             // Just check if the token exists and has the correct format
             $parts = explode('.', $token);
-            if (count($parts) !== 3) return false;
+            if (count($parts) !== 3)
+                return false;
 
             // Basic structure validation is enough since our tokens don't have expiration
             return true;
@@ -444,14 +537,16 @@ class Church_App_Notifications_API {
     /**
      * Check if user has admin permission
      */
-    public function check_admin_permission() {
+    public function check_admin_permission()
+    {
         return current_user_can('manage_options');
     }
 
     /**
      * Test push notification endpoint
      */
-    public function test_push_notification($request) {
+    public function test_push_notification($request)
+    {
         try {
             global $wpdb;
             $table_name = $wpdb->prefix . 'app_notifications';
@@ -486,7 +581,15 @@ class Church_App_Notifications_API {
                 $table_name,
                 $notification_data,
                 array(
-                    '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s'
+                    '%d',
+                    '%s',
+                    '%s',
+                    '%s',
+                    '%d',
+                    '%s',
+                    '%s',
+                    '%s',
+                    '%s'
                 )
             );
 

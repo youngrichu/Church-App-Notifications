@@ -5,6 +5,23 @@ All notable changes to the Church App Notifications plugin will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2024-12-08
+
+### Added
+- **Per-user notification read tracking**: Each user now has their own read/unread status for notifications
+- New `wp_app_notification_reads` database table for storing user-notification read records
+- New API endpoint: `GET /notifications/unread-count` - Returns unread notification count for authenticated user
+- New API endpoint: `PUT /notifications/mark-all-read` - Marks all notifications as read for authenticated user
+- Database migration routine for existing installations
+
+### Changed
+- `GET /notifications` now returns per-user `is_read` status via JOIN query
+- `PUT /notifications/{id}/read` now creates per-user read record instead of updating global status
+- Response format for mark-as-read now includes `notification_id` and `user_id`
+
+### Fixed
+- Fixed issue where marking a notification as read would mark it read for all users
+
 ## [2.3.0] - 2024-01-19
 
 ### Added
