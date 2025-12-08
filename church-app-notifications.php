@@ -29,18 +29,18 @@ require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-expo-push.php
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-blog-notifications.php';
 require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'admin/class-admin.php';
 
-// Activation hook
+// Activation hook - creates all tables
 register_activation_hook(__FILE__, function () {
     require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-database.php';
     $database = new Church_App_Notifications_DB();
     $database->create_tables();
 });
 
-// Deactivation hook
+// Deactivation hook - DO NOT drop tables here (data loss!)
+// Tables are only dropped on uninstall via uninstall.php
 register_deactivation_hook(__FILE__, function () {
-    require_once CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR . 'includes/class-database.php';
-    $database = new Church_App_Notifications_DB();
-    $database->drop_tables();
+    // Cleanup temporary data if needed, but preserve user data
+    error_log('Church App Notifications: Plugin deactivated');
 });
 
 // Initialize the plugin
