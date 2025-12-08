@@ -133,6 +133,20 @@ class Church_App_Notifications_API
             'permission_callback' => '__return_true'
         ));
 
+        // Dismiss (delete) a notification for the authenticated user
+        register_rest_route($this->namespace, '/notifications/(?P<id>\d+)', array(
+            'methods' => 'DELETE',
+            'callback' => array($this, 'dismiss_notification'),
+            'permission_callback' => '__return_true',
+            'args' => array(
+                'id' => array(
+                    'validate_callback' => function ($param) {
+                        return is_numeric($param);
+                    }
+                )
+            )
+        ));
+
         // Log after registration
         error_log('Routes registered successfully');
     }
@@ -277,15 +291,17 @@ class Church_App_Notifications_API
             $offset = ($page - 1) * $per_page;
 
             // Prepare the query with user filtering, per-user read status via JOIN, and pagination
+            // Excludes dismissed notifications (where dismissed_at IS NOT NULL)
             $query = $wpdb->prepare(
                 "SELECT SQL_CALC_FOUND_ROWS 
                     n.id, n.user_id, n.title, n.body, n.type, 
                     n.created_at, n.reference_id, n.reference_type, 
                     n.reference_url, n.image_url,
-                    CASE WHEN r.id IS NOT NULL THEN '1' ELSE '0' END as is_read
+                    CASE WHEN r.id IS NOT NULL AND r.read_at IS NOT NULL THEN '1' ELSE '0' END as is_read
                 FROM $table_name n
                 LEFT JOIN $reads_table r ON n.id = r.notification_id AND r.user_id = %d
-                WHERE n.user_id = %d OR n.user_id = 0 
+                WHERE (n.user_id = %d OR n.user_id = 0)
+                AND (r.dismissed_at IS NULL)
                 ORDER BY n.created_at DESC 
                 LIMIT %d OFFSET %d",
                 $user->ID,
@@ -513,6 +529,48 @@ class Church_App_Notifications_API
             array(
                 'success' => true,
                 'unread_count' => $count,
+                'user_id' => $user->ID
+            ),
+            200
+        );
+    }
+
+    /**
+     * Dismiss (soft-delete) a notification for the authenticated user
+     */
+    public function dismiss_notification($request)
+    {
+        $notification_id = intval($request['id']);
+
+        // Add debug logging
+        error_log('Attempting to dismiss notification: ' . $notification_id);
+
+        // Get user from JWT token
+        $user = $this->get_user_from_jwt($request);
+        if (!$user) {
+            error_log('No valid user found in JWT token for dismiss_notification');
+            return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
+        }
+
+        // Dismiss using database helper
+        $result = $this->db->dismiss_notification($user->ID, $notification_id);
+
+        if ($result === false) {
+            error_log('Failed to dismiss notification for user: ' . $user->ID);
+            return new WP_Error(
+                'dismiss_failed',
+                'Failed to dismiss notification',
+                array('status' => 500)
+            );
+        }
+
+        error_log('Successfully dismissed notification ' . $notification_id . ' for user ' . $user->ID);
+
+        return new WP_REST_Response(
+            array(
+                'success' => true,
+                'message' => 'Notification dismissed',
+                'notification_id' => $notification_id,
                 'user_id' => $user->ID
             ),
             200

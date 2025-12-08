@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Church App Notifications
  * Description: Handles push notifications for the Church App
- * Version: 2.4.0
+ * Version: 2.4.1
  * Author: Habtamu
  * Author URI: https://github.com/youngrichu
  * Text Domain: church-app-notifications
@@ -15,7 +15,7 @@ if (!defined('WPINC')) {
 }
 
 // Define plugin constants
-define('CHURCH_APP_NOTIFICATIONS_VERSION', '2.4.0');
+define('CHURCH_APP_NOTIFICATIONS_VERSION', '2.4.1');
 define('CHURCH_APP_NOTIFICATIONS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CHURCH_APP_NOTIFICATIONS_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -77,6 +77,17 @@ function church_app_notifications_upgrade()
 
         update_option('church_app_notifications_db_version', '2.4.0');
         error_log('Church App Notifications: Database upgrade to 2.4.0 complete');
+    }
+
+    // Upgrade to 2.4.1: Add dismissed_at column for per-user dismissal
+    if (version_compare($current_db_version, '2.4.1', '<')) {
+        error_log('Church App Notifications: Upgrading database schema to 2.4.1');
+
+        $database = new Church_App_Notifications_DB();
+        $database->add_dismissed_column();
+
+        update_option('church_app_notifications_db_version', '2.4.1');
+        error_log('Church App Notifications: Database upgrade to 2.4.1 complete');
     }
 }
 add_action('plugins_loaded', 'church_app_notifications_upgrade');

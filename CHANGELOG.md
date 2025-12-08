@@ -5,6 +5,17 @@ All notable changes to the Church App Notifications plugin will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2024-12-08
+
+### Added
+- **Per-user notification dismissal**: Users can now dismiss notifications without affecting other users
+- New API endpoint: `DELETE /notifications/{id}` - Dismisses (hides) a notification for the authenticated user
+- New `dismissed_at` column in reads table for soft-delete tracking
+
+### Changed
+- `GET /notifications` now excludes dismissed notifications for each user
+- Unread count excludes dismissed notifications
+
 ## [2.4.0] - 2024-12-08
 
 ### Added

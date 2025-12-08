@@ -112,6 +112,7 @@ class Church_App_Notifications_DB
             user_id bigint(20) NOT NULL,
             notification_id bigint(20) NOT NULL,
             read_at datetime DEFAULT CURRENT_TIMESTAMP,
+            dismissed_at datetime DEFAULT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY user_notification (user_id, notification_id),
             KEY user_id (user_id),
@@ -235,12 +236,103 @@ class Church_App_Notifications_DB
         $count = $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$this->table_name} n
              LEFT JOIN {$this->reads_table} r ON n.id = r.notification_id AND r.user_id = %d
-             WHERE (n.user_id = %d OR n.user_id = 0) AND r.id IS NULL",
+             WHERE (n.user_id = %d OR n.user_id = 0) 
+             AND (r.id IS NULL OR r.read_at IS NULL)
+             AND (r.dismissed_at IS NULL)",
             $user_id,
             $user_id
         ));
 
         return (int) $count;
+    }
+
+    /**
+     * Dismiss a notification for a specific user
+     * 
+     * @param int $user_id The user ID
+     * @param int $notification_id The notification ID
+     * @return bool True on success, false on failure
+     */
+    public function dismiss_notification($user_id, $notification_id)
+    {
+        global $wpdb;
+
+        // Check if record already exists
+        $existing = $wpdb->get_row($wpdb->prepare(
+            "SELECT id FROM {$this->reads_table} WHERE user_id = %d AND notification_id = %d",
+            $user_id,
+            $notification_id
+        ));
+
+        if ($existing) {
+            // Update existing record with dismissed_at
+            $result = $wpdb->update(
+                $this->reads_table,
+                array('dismissed_at' => current_time('mysql')),
+                array('user_id' => $user_id, 'notification_id' => $notification_id),
+                array('%s'),
+                array('%d', '%d')
+            );
+        } else {
+            // Insert new record with dismissed_at
+            $result = $wpdb->insert(
+                $this->reads_table,
+                array(
+                    'user_id' => $user_id,
+                    'notification_id' => $notification_id,
+                    'read_at' => null,
+                    'dismissed_at' => current_time('mysql')
+                ),
+                array('%d', '%d', '%s', '%s')
+            );
+        }
+
+        if ($result === false) {
+            error_log('Failed to dismiss notification: ' . $wpdb->last_error);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if a notification has been dismissed by a specific user
+     * 
+     * @param int $user_id The user ID
+     * @param int $notification_id The notification ID
+     * @return bool True if dismissed, false otherwise
+     */
+    public function is_dismissed($user_id, $notification_id)
+    {
+        global $wpdb;
+
+        $result = $wpdb->get_var($wpdb->prepare(
+            "SELECT dismissed_at FROM {$this->reads_table} WHERE user_id = %d AND notification_id = %d AND dismissed_at IS NOT NULL",
+            $user_id,
+            $notification_id
+        ));
+
+        return !is_null($result);
+    }
+
+    /**
+     * Add dismissed_at column to existing reads table (migration)
+     */
+    public function add_dismissed_column()
+    {
+        global $wpdb;
+
+        // Check if column already exists
+        $column_exists = $wpdb->get_results($wpdb->prepare(
+            "SHOW COLUMNS FROM {$this->reads_table} LIKE %s",
+            'dismissed_at'
+        ));
+
+        if (empty($column_exists)) {
+            error_log('Adding dismissed_at column to reads table...');
+            $wpdb->query("ALTER TABLE {$this->reads_table} ADD COLUMN dismissed_at datetime DEFAULT NULL AFTER read_at");
+            error_log('dismissed_at column added');
+        }
     }
 
     /**
