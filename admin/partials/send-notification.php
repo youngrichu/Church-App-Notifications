@@ -16,14 +16,6 @@ if (isset($_POST['send_notification'])) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'app_notifications';
     
-    error_log('Creating notification from admin interface');
-    error_log('Title: ' . $title);
-    error_log('Message: ' . $message);
-    error_log('Type: ' . $type);
-    error_log('User ID: ' . $user_id);
-    error_log('Image URL: ' . $image_url);
-    error_log('Deep Link: ' . $deep_link);
-    
     // Insert notification
     $result = $wpdb->insert(
         $table_name,
@@ -45,7 +37,6 @@ if (isset($_POST['send_notification'])) {
     }
 
     $notification_id = $wpdb->insert_id;
-    error_log('Notification created with ID: ' . $notification_id);
 
     // Initialize Expo Push and send notification
     $expo_push = new Church_App_Notifications_Expo_Push();

@@ -2,31 +2,27 @@
 /**
  * Handles sending push notifications via Expo's Push API
  */
-class Church_App_Notifications_Expo_Push {
+class Church_App_Notifications_Expo_Push
+{
     private $api_url = 'https://exp.host/--/api/v2/push/send';
     private $tokens_table;
     private $notifications_table;
 
-    public function __construct() {
+    public function __construct()
+    {
         global $wpdb;
         $this->tokens_table = $wpdb->prefix . 'app_push_tokens';
         $this->notifications_table = $wpdb->prefix . 'app_notifications';
-
-        // Add debug logging
-        error_log('Initializing Expo Push with tables:');
-        error_log('Tokens table: ' . $this->tokens_table);
-        error_log('Notifications table: ' . $this->notifications_table);
     }
 
     /**
      * Send push notification via Expo
      */
-    public function send_notification($notification_id) {
+    public function send_notification($notification_id)
+    {
         global $wpdb;
 
         try {
-            error_log('Starting to send notification: ' . $notification_id);
-
             // Get notification details
             $notification = $wpdb->get_row(
                 $wpdb->prepare(
@@ -40,8 +36,6 @@ class Church_App_Notifications_Expo_Push {
                 return false;
             }
 
-            error_log('Found notification: ' . print_r($notification, true));
-
             // Get tokens based on user_id
             $query = $notification->user_id === '0' || $notification->user_id === 0
                 ? "SELECT DISTINCT token FROM {$this->tokens_table} WHERE token != ''"  // Get all valid tokens
@@ -50,12 +44,9 @@ class Church_App_Notifications_Expo_Push {
                     $notification->user_id
                 );
 
-            error_log('Token query: ' . $query);
             $tokens = $wpdb->get_results($query);
-            error_log('Found tokens: ' . print_r($tokens, true));
 
             if (empty($tokens)) {
-                error_log("No tokens found" . ($notification->user_id ? " for user: {$notification->user_id}" : ""));
                 return false;
             }
 
@@ -63,11 +54,8 @@ class Church_App_Notifications_Expo_Push {
             $messages = array();
             foreach ($tokens as $token_row) {
                 if (empty($token_row->token)) {
-                    error_log('Skipping empty token');
                     continue;
                 }
-
-                error_log("Processing token: {$token_row->token}");
 
                 // Get user_id for this token to count their unread notifications
                 $token_user = $wpdb->get_var($wpdb->prepare(
@@ -80,9 +68,6 @@ class Church_App_Notifications_Expo_Push {
                     WHERE (user_id = %d OR user_id = '0') AND is_read = '0'",
                     $token_user
                 ));
-
-                error_log("Preparing message for token: {$token_row->token}");
-                error_log("Unread count for user {$token_user}: {$unread_count}");
 
                 // Build the deep link URL based on type
                 $deep_link_url = '';
@@ -100,9 +85,9 @@ class Church_App_Notifications_Expo_Push {
 
                 // Prepare notification data
                 $notification_data = array(
-                    'id' => (string)$notification->id,
+                    'id' => (string) $notification->id,
                     'type' => $notification->type === 'blog' ? 'blog_post' : $notification->type,
-                    'reference_id' => (string)$notification->reference_id,
+                    'reference_id' => (string) $notification->reference_id,
                     'image_url' => $notification->image_url,
                     'reference_url' => $deep_link_url
                 );
@@ -133,21 +118,17 @@ class Church_App_Notifications_Expo_Push {
                     ];
                 }
 
-                error_log('Prepared message: ' . print_r($message, true));
                 $messages[] = $message;
             }
 
             if (empty($messages)) {
-                error_log('No messages to send');
                 return false;
             }
-
-            error_log('Prepared ' . count($messages) . ' messages');
 
             // Split messages into chunks of 100 (Expo's limit)
             $chunks = array_chunk($messages, 100);
             $success = true;
-            
+
             foreach ($chunks as $chunk_index => $chunk) {
                 $args = array(
                     'headers' => array(
@@ -161,9 +142,6 @@ class Church_App_Notifications_Expo_Push {
                     'sslverify' => false,
                 );
 
-                error_log('Sending chunk ' . ($chunk_index + 1) . ' of ' . count($chunks));
-                error_log('Request to Expo: ' . print_r($args, true));
-
                 $response = wp_remote_post($this->api_url, $args);
 
                 if (is_wp_error($response)) {
@@ -174,18 +152,15 @@ class Church_App_Notifications_Expo_Push {
 
                 $response_code = wp_remote_retrieve_response_code($response);
                 $response_body = wp_remote_retrieve_body($response);
-                
-                error_log('Expo response code: ' . $response_code);
-                error_log('Expo response body: ' . $response_body);
 
                 if ($response_code !== 200) {
-                    error_log('Expo returned non-200 status code');
+                    error_log('Expo returned non-200 status code: ' . $response_code);
                     $success = false;
                     continue;
                 }
 
                 $body = json_decode($response_body, true);
-                
+
                 if (!$body || !isset($body['data'])) {
                     error_log('Invalid response from Expo');
                     $success = false;
@@ -213,9 +188,6 @@ class Church_App_Notifications_Expo_Push {
                                 array('%s'),
                                 array('%s')
                             );
-                            error_log('Updated last_used for token: ' . $token);
-                        } else {
-                            error_log('Failed to send to token: ' . $chunk[$idx]['to'] . ' - Status: ' . $ticket['status']);
                         }
                     }
                 }
@@ -232,7 +204,8 @@ class Church_App_Notifications_Expo_Push {
     /**
      * Get Android configuration for notification
      */
-    private function get_android_config($notification) {
+    private function get_android_config($notification)
+    {
         $config = [
             'channelId' => $this->get_channel_id($notification->type),
             'priority' => 'high'
@@ -270,7 +243,8 @@ class Church_App_Notifications_Expo_Push {
     /**
      * Get channel ID based on notification type
      */
-    private function get_channel_id($type) {
+    private function get_channel_id($type)
+    {
         switch ($type) {
             case 'event':
                 return 'events';
@@ -287,34 +261,25 @@ class Church_App_Notifications_Expo_Push {
     /**
      * Clean up invalid tokens based on Expo's response
      */
-    private function handle_invalid_tokens($errors) {
+    private function handle_invalid_tokens($errors)
+    {
         global $wpdb;
 
         foreach ($errors as $error) {
-            if (isset($error['details']['error']) && 
+            if (
+                isset($error['details']['error']) &&
                 in_array($error['details']['error'], ['DeviceNotRegistered', 'InvalidCredentials']) &&
-                isset($error['details']['token'])) {
-                
-                // Log token details before removal
-                $token_info = $wpdb->get_row(
-                    $wpdb->prepare(
-                        "SELECT * FROM {$this->tokens_table} WHERE token = %s",
-                        $error['details']['token']
-                    )
-                );
+                isset($error['details']['token'])
+            ) {
 
-                error_log('Invalid token details before removal:');
-                error_log('Error type: ' . $error['details']['error']);
-                error_log('Token info: ' . print_r($token_info, true));
-                
                 $wpdb->delete(
                     $this->tokens_table,
                     array('token' => $error['details']['token']),
                     array('%s')
                 );
 
-                error_log('Removed invalid token: ' . $error['details']['token'] . 
-                         ' due to error: ' . $error['details']['error']);
+                error_log('Removed invalid token: ' . $error['details']['token'] .
+                    ' due to error: ' . $error['details']['error']);
             }
         }
     }

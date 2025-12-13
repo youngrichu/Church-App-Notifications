@@ -40,7 +40,6 @@ register_activation_hook(__FILE__, function () {
 // Tables are only dropped on uninstall via uninstall.php
 register_deactivation_hook(__FILE__, function () {
     // Cleanup temporary data if needed, but preserve user data
-    error_log('Church App Notifications: Plugin deactivated');
 });
 
 // Initialize the plugin
@@ -70,24 +69,16 @@ function church_app_notifications_upgrade()
 
     // Upgrade to 2.4.0: Add notification reads table for per-user tracking
     if (version_compare($current_db_version, '2.4.0', '<')) {
-        error_log('Church App Notifications: Upgrading database schema to 2.4.0');
-
         $database = new Church_App_Notifications_DB();
         $database->create_reads_table();
-
         update_option('church_app_notifications_db_version', '2.4.0');
-        error_log('Church App Notifications: Database upgrade to 2.4.0 complete');
     }
 
     // Upgrade to 2.4.1: Add dismissed_at column for per-user dismissal
     if (version_compare($current_db_version, '2.4.1', '<')) {
-        error_log('Church App Notifications: Upgrading database schema to 2.4.1');
-
         $database = new Church_App_Notifications_DB();
         $database->add_dismissed_column();
-
         update_option('church_app_notifications_db_version', '2.4.1');
-        error_log('Church App Notifications: Database upgrade to 2.4.1 complete');
     }
 }
 add_action('plugins_loaded', 'church_app_notifications_upgrade');

@@ -16,9 +16,6 @@ class Church_App_Notifications_API
 
     public function register_routes()
     {
-        // Log registration attempt
-        error_log('Registering notification routes at: ' . $this->namespace);
-
         // Make sure the namespace is correct
         $this->namespace = 'church-app/v1';
 
@@ -35,9 +32,6 @@ class Church_App_Notifications_API
             },
             'permission_callback' => '__return_true'
         ));
-
-        // Log the full URL of the test endpoint
-        error_log('Test endpoint URL: ' . rest_url($this->namespace . '/test'));
 
         register_rest_route($this->namespace, '/notifications', array(
             'methods' => WP_REST_Server::READABLE,
@@ -146,9 +140,6 @@ class Church_App_Notifications_API
                 )
             )
         ));
-
-        // Log after registration
-        error_log('Routes registered successfully');
     }
 
     // Add this function to your class to ensure the plugin is loaded properly
@@ -160,29 +151,22 @@ class Church_App_Notifications_API
     private function get_user_from_jwt($request)
     {
         try {
-            error_log('Starting get_user_from_jwt');
-
             $auth_header = $request->get_header('Authorization');
-            error_log('Auth header: ' . print_r($auth_header, true));
 
             if (!$auth_header) {
-                error_log('No Authorization header found');
                 return null;
             }
 
             // Extract token
             if (!preg_match('/Bearer\s(\S+)/', $auth_header, $matches)) {
-                error_log('Invalid Authorization header format');
                 return null;
             }
 
             $jwt = $matches[1];
-            error_log('Extracted JWT: ' . $jwt);
 
             // Decode JWT token
             $token_parts = explode('.', $jwt);
             if (count($token_parts) !== 3) {
-                error_log('Invalid JWT format');
                 return null;
             }
 
@@ -191,18 +175,15 @@ class Church_App_Notifications_API
             $payload_data = json_decode($payload);
 
             if (!$payload_data || !isset($payload_data->id)) {
-                error_log('Invalid JWT payload');
                 return null;
             }
 
             // Get user by ID
             $user = get_user_by('id', $payload_data->id);
             if (!$user) {
-                error_log('User not found for ID: ' . $payload_data->id);
                 return null;
             }
 
-            error_log('Successfully authenticated user: ' . $user->ID);
             return $user;
 
         } catch (Exception $e) {
@@ -214,17 +195,13 @@ class Church_App_Notifications_API
     private function get_user_id_from_token($token)
     {
         try {
-            error_log('Validating token: ' . $token);
-
             if (empty($token)) {
-                error_log('Empty token provided');
                 return null;
             }
 
             // Parse token parts
             $parts = explode('.', $token);
             if (count($parts) !== 3) {
-                error_log('Invalid token format - wrong number of segments');
                 return null;
             }
 
@@ -234,24 +211,19 @@ class Church_App_Notifications_API
             $payload = base64_decode($payload);
 
             if ($payload === false) {
-                error_log('Failed to decode base64 payload');
                 return null;
             }
 
             $data = json_decode($payload);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                error_log('Failed to decode JSON payload: ' . json_last_error_msg());
                 return null;
             }
 
             // Check for id in the correct location based on your token structure
             if (isset($data->id)) {
-                error_log('Found user ID in token: ' . $data->id);
                 return $data->id;
             }
 
-            error_log('Token payload: ' . print_r($data, true));
-            error_log('No user ID found in token payload');
             return null;
 
         } catch (Exception $e) {
@@ -267,21 +239,16 @@ class Church_App_Notifications_API
             $table_name = $wpdb->prefix . 'app_notifications';
             $reads_table = $this->db->get_reads_table();
 
-            error_log('Getting notifications from table: ' . $table_name);
-
             // Get user from JWT token
             $user = $this->get_user_from_jwt($request);
             if (!$user) {
-                error_log('No valid user found in JWT token');
                 return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
             }
 
             // Verify table exists
             $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'");
-            error_log('Table exists check: ' . ($table_exists ? 'Yes' : 'No'));
 
             if (!$table_exists) {
-                error_log('Notifications table does not exist!');
                 return new WP_Error('table_missing', 'Notifications table does not exist', array('status' => 500));
             }
 
@@ -310,8 +277,6 @@ class Church_App_Notifications_API
                 $offset
             );
 
-            error_log('Running query: ' . $query);
-
             // Get notifications
             $notifications = $wpdb->get_results($query);
 
@@ -323,8 +288,6 @@ class Church_App_Notifications_API
             // Get total count for pagination
             $total_items = $wpdb->get_var("SELECT FOUND_ROWS()");
             $total_pages = ceil($total_items / $per_page);
-
-            error_log('Retrieved notifications: ' . print_r($notifications, true));
 
             // Add pagination headers
             $response = new WP_REST_Response($notifications, 200);
@@ -434,13 +397,9 @@ class Church_App_Notifications_API
     {
         $notification_id = intval($request['id']);
 
-        // Add debug logging
-        error_log('Attempting to mark notification as read: ' . $notification_id);
-
         // Get user from JWT token
         $user = $this->get_user_from_jwt($request);
         if (!$user) {
-            error_log('No valid user found in JWT token for mark_notification_read');
             return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
         }
 
@@ -455,8 +414,6 @@ class Church_App_Notifications_API
                 array('status' => 500)
             );
         }
-
-        error_log('Successfully marked notification ' . $notification_id . ' as read for user ' . $user->ID);
 
         return new WP_REST_Response(
             array(
@@ -477,11 +434,8 @@ class Church_App_Notifications_API
         // Get user from JWT token
         $user = $this->get_user_from_jwt($request);
         if (!$user) {
-            error_log('No valid user found in JWT token for mark_all_notifications_read');
             return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
         }
-
-        error_log('Marking all notifications as read for user: ' . $user->ID);
 
         // Mark all as read using database helper
         $count = $this->db->mark_all_as_read($user->ID);
@@ -494,8 +448,6 @@ class Church_App_Notifications_API
                 array('status' => 500)
             );
         }
-
-        error_log('Marked ' . $count . ' notifications as read for user ' . $user->ID);
 
         return new WP_REST_Response(
             array(
@@ -516,14 +468,11 @@ class Church_App_Notifications_API
         // Get user from JWT token
         $user = $this->get_user_from_jwt($request);
         if (!$user) {
-            error_log('No valid user found in JWT token for get_unread_count');
             return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
         }
 
         // Get unread count using database helper
         $count = $this->db->get_unread_count($user->ID);
-
-        error_log('Unread notification count for user ' . $user->ID . ': ' . $count);
 
         return new WP_REST_Response(
             array(
@@ -542,13 +491,9 @@ class Church_App_Notifications_API
     {
         $notification_id = intval($request['id']);
 
-        // Add debug logging
-        error_log('Attempting to dismiss notification: ' . $notification_id);
-
         // Get user from JWT token
         $user = $this->get_user_from_jwt($request);
         if (!$user) {
-            error_log('No valid user found in JWT token for dismiss_notification');
             return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
         }
 
@@ -563,8 +508,6 @@ class Church_App_Notifications_API
                 array('status' => 500)
             );
         }
-
-        error_log('Successfully dismissed notification ' . $notification_id . ' for user ' . $user->ID);
 
         return new WP_REST_Response(
             array(
@@ -632,8 +575,6 @@ class Church_App_Notifications_API
                 'created_at' => current_time('mysql')
             );
 
-            error_log('Creating test event notification: ' . print_r($notification_data, true));
-
             // Insert notification
             $result = $wpdb->insert(
                 $table_name,
@@ -657,7 +598,6 @@ class Church_App_Notifications_API
             }
 
             $notification_id = $wpdb->insert_id;
-            error_log('Created test notification with ID: ' . $notification_id);
 
             // Send push notification using Expo
             $expo_push = new Church_App_Notifications_Expo_Push();
