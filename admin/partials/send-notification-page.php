@@ -4,60 +4,9 @@ if (!current_user_can('manage_options')) {
     return;
 }
 
-// Handle form submission
-if (isset($_POST['send_notification'])) {
-    if (!isset($_POST['notification_nonce']) || !wp_verify_nonce($_POST['notification_nonce'], 'send_notification')) {
-        wp_die('Invalid nonce');
-    }
-
-    // Get API instance
-    require_once plugin_dir_path(dirname(dirname(__FILE__))) . 'includes/class-api.php';
-    $api = new Church_App_Notifications_API();
-
-    // Create WP_REST_Request object
-    $request = new WP_REST_Request('POST', '/church-app/v1/notifications/send');
-    
-    // Set parameters
-    $request->set_param('user_id', intval($_POST['user_id']));
-    $request->set_param('title', sanitize_text_field($_POST['title']));
-    $request->set_param('body', wp_kses_post($_POST['body']));
-    $request->set_param('type', sanitize_text_field($_POST['type']));
-    
-    // Handle image URL
-    $image_url = esc_url_raw($_POST['image_url']);
-    if (!empty($image_url)) {
-        $request->set_param('image_url', $image_url);
-        $request->set_param('reference_url', $image_url);
-    }
-
-    // Send notification
-    $result = $api->send_notification($request);
-
-    // Handle result
-    if (is_wp_error($result)) {
-        $message = 'Error sending notification: ' . $result->get_error_message();
-        $type = 'error';
-    } else {
-        $message = 'Notification sent successfully!';
-        $type = 'success';
-    }
-
-    // Store message in transient
-    set_transient('church_app_notification_message', array(
-        'message' => $message,
-        'type' => $type
-    ), 30);
-
-    // Redirect to notifications list
-    wp_safe_redirect(add_query_arg(
-        array('page' => 'church-app-notifications', 'message' => $type),
-        admin_url('admin.php')
-    ));
-    exit;
-}
-
 // Get all users for the dropdown
 $users = get_users(array('fields' => array('ID', 'user_email')));
+
 
 // Display any error messages
 if (isset($_GET['message'])) {
@@ -147,37 +96,38 @@ if (isset($_GET['message'])) {
 
         <p class="submit">
             <input type="submit" name="send_notification" class="button button-primary" value="Send Notification">
-            <a href="<?php echo esc_url(admin_url('admin.php?page=church-app-notifications')); ?>" class="button">Cancel</a>
+            <a href="<?php echo esc_url(admin_url('admin.php?page=church-app-notifications')); ?>"
+                class="button">Cancel</a>
         </p>
     </form>
 </div>
 
 <style>
-.send-notification-form {
-    max-width: 800px;
-    margin-top: 20px;
-}
+    .send-notification-form {
+        max-width: 800px;
+        margin-top: 20px;
+    }
 
-.form-table td {
-    padding: 15px 10px;
-}
+    .form-table td {
+        padding: 15px 10px;
+    }
 
-.form-table th {
-    padding: 20px 10px 20px 0;
-}
+    .form-table th {
+        padding: 20px 10px 20px 0;
+    }
 
-#image_preview {
-    border: 1px solid #ddd;
-    padding: 5px;
-    background: #f9f9f9;
-}
+    #image_preview {
+        border: 1px solid #ddd;
+        padding: 5px;
+        background: #f9f9f9;
+    }
 
-/* TinyMCE Editor Styles */
-.wp-editor-wrap {
-    max-width: 100%;
-}
+    /* TinyMCE Editor Styles */
+    .wp-editor-wrap {
+        max-width: 100%;
+    }
 
-.wp-editor-area {
-    border: 1px solid #ddd !important;
-}
+    .wp-editor-area {
+        border: 1px solid #ddd !important;
+    }
 </style>
