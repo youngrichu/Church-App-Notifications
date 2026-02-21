@@ -33,8 +33,19 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
         $this->_column_headers = array($columns, $hidden, $sortable);
 
         // Setup orderby
-        $orderby = isset($_REQUEST['orderby']) ? sanitize_sql_orderby($_REQUEST['orderby']) : 'created_at';
-        $order = isset($_REQUEST['order']) ? sanitize_text_field($_REQUEST['order']) : 'DESC';
+        $sortable_columns = $this->get_sortable_columns();
+        $orderby = (isset($_REQUEST['orderby']) && is_string($_REQUEST['orderby'])) ? $_REQUEST['orderby'] : 'created_at';
+
+        if (array_key_exists($orderby, $sortable_columns)) {
+            $orderby = $sortable_columns[$orderby][0];
+        } else {
+            $orderby = 'created_at';
+        }
+
+        $order = (isset($_REQUEST['order']) && is_string($_REQUEST['order'])) ? strtoupper($_REQUEST['order']) : 'DESC';
+        if ($order !== 'ASC' && $order !== 'DESC') {
+            $order = 'DESC';
+        }
 
         // Setup filters
         $where = '1=1';
