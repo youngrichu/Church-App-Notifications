@@ -49,14 +49,22 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
 
         // Setup filters
         $where = '1=1';
+        $query_args = [];
+
         if (!empty($_REQUEST['type'])) {
             $type = sanitize_text_field($_REQUEST['type']);
-            $where .= $wpdb->prepare(" AND type = %s", $type);
+            $where .= " AND type = %s";
+            $query_args[] = $type;
         }
         if (isset($_REQUEST['status']) && $_REQUEST['status'] !== '') {
             $status = sanitize_text_field($_REQUEST['status']);
-            $where .= $wpdb->prepare(" AND is_read = %s", $status);
+            $where .= " AND is_read = %s";
+            $query_args[] = $status;
         }
+
+        // Add limit/offset args
+        $query_args[] = $per_page;
+        $query_args[] = ($current_page - 1) * $per_page;
 
         // Get items
         $sql = $wpdb->prepare(
@@ -64,8 +72,7 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
             WHERE $where 
             ORDER BY $orderby $order 
             LIMIT %d OFFSET %d",
-            $per_page,
-            ($current_page - 1) * $per_page
+            $query_args
         );
         
         $this->items = $wpdb->get_results($sql);
