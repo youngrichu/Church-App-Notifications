@@ -32,20 +32,18 @@ class Church_App_Notifications_List_Table extends WP_List_Table {
         $sortable = $this->get_sortable_columns();
         $this->_column_headers = array($columns, $hidden, $sortable);
 
-        // Setup orderby
-        $sortable_columns = $this->get_sortable_columns();
-        $orderby = (isset($_REQUEST['orderby']) && is_string($_REQUEST['orderby'])) ? $_REQUEST['orderby'] : 'created_at';
+        // Setup orderby - map request keys to allowed SQL column names (whitelist)
+        $allowed_orderby = [
+            'title'      => 'title',
+            'type'       => 'type',
+            'created_at' => 'created_at',
+            'status'     => 'is_read',
+        ];
+        $request_orderby = isset( $_REQUEST['orderby'] ) ? sanitize_key( $_REQUEST['orderby'] ) : '';
+        $orderby         = isset( $allowed_orderby[ $request_orderby ] ) ? $allowed_orderby[ $request_orderby ] : 'created_at';
 
-        if (array_key_exists($orderby, $sortable_columns)) {
-            $orderby = $sortable_columns[$orderby][0];
-        } else {
-            $orderby = 'created_at';
-        }
-
-        $order = (isset($_REQUEST['order']) && is_string($_REQUEST['order'])) ? strtoupper($_REQUEST['order']) : 'DESC';
-        if ($order !== 'ASC' && $order !== 'DESC') {
-            $order = 'DESC';
-        }
+        $request_order = isset( $_REQUEST['order'] ) ? strtoupper( sanitize_text_field( $_REQUEST['order'] ) ) : 'DESC';
+        $order         = ( $request_order === 'ASC' ) ? 'ASC' : 'DESC';
 
         // Setup filters
         $where = ['1=1'];
