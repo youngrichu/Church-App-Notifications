@@ -5,6 +5,12 @@ All notable changes to the Church App Notifications plugin will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.3] - 2026-02-23
+
+### Fixed
+- Fixed blog notification sending full post content instead of a trimmed excerpt: excerpt is now always capped at 30 words regardless of whether a manual excerpt is set
+- Fixed featured image not reflecting the current image when a duplicated post is published: switched from `publish_post` hook to `wp_after_insert_post` so all post meta (including the thumbnail) is fully saved before the notification is built
+
 ## [2.4.2] - 2026-02-21
 
 ### Security

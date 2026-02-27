@@ -6,17 +6,34 @@
 class Church_App_Blog_Notifications {
     
     public function __construct() {
-        // Hook into post publication
-        add_action('publish_post', array($this, 'handle_post_notification'), 10, 2);
+        // Use wp_after_insert_post so all meta (including featured image) is fully saved before we read it
+        add_action('wp_after_insert_post', array($this, 'handle_post_notification'), 10, 4);
     }
 
     /**
      * Handle notification when a post is published
-     * 
-     * @param int $post_id The post ID
-     * @param WP_Post $post The post object
+     *
+     * @param int          $post_id     The post ID
+     * @param WP_Post      $post        The post object
+     * @param bool         $update      Whether this is an update
+     * @param WP_Post|null $post_before Post state before the update (null for new posts)
      */
-    public function handle_post_notification($post_id, $post) {
+    public function handle_post_notification($post_id, $post, $update, $post_before) {
+        // Only handle 'post' post type
+        if ($post->post_type !== 'post') {
+            return;
+        }
+
+        // Only fire when transitioning INTO published status
+        if ($post->post_status !== 'publish') {
+            return;
+        }
+
+        // Don't re-notify if it was already published before this save
+        if ($post_before && $post_before->post_status === 'publish') {
+            return;
+        }
+
         // Don't send notification if this is a revision
         if (wp_is_post_revision($post_id)) {
             return;
@@ -30,9 +47,12 @@ class Church_App_Blog_Notifications {
         try {
             // Get post details
             $post_title = get_the_title($post_id);
-            $post_excerpt = has_excerpt($post_id) 
+
+            // Always trim to a fixed length so both manual and auto-excerpts are capped
+            $raw = has_excerpt($post_id)
                 ? wp_strip_all_tags(get_the_excerpt($post_id))
-                : wp_trim_words(wp_strip_all_tags($post->post_content), 20);
+                : wp_strip_all_tags($post->post_content);
+            $post_excerpt = wp_trim_words($raw, 30, '...');
             
             // Get featured image if available
             $image_url = '';

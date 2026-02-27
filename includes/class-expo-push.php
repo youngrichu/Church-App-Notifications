@@ -128,6 +128,7 @@ class Church_App_Notifications_Expo_Push
             // Split messages into chunks of 100 (Expo's limit)
             $chunks = array_chunk($messages, 100);
             $success = true;
+            $ticket_ids = array();
 
             foreach ($chunks as $chunk_index => $chunk) {
                 $args = array(
@@ -176,11 +177,12 @@ class Church_App_Notifications_Expo_Push
                     $success = false;
                 }
 
-                // Update last_used timestamp for successful tokens
+                // Process each ticket response
                 if (isset($body['data']) && !empty($body['data'])) {
                     foreach ($body['data'] as $idx => $ticket) {
+                        $token = $chunk[$idx]['to'];
                         if ($ticket['status'] === 'ok') {
-                            $token = $chunk[$idx]['to'];
+                            // Update last_used timestamp for successful tokens
                             $wpdb->update(
                                 $this->tokens_table,
                                 array('last_used' => current_time('mysql')),
@@ -188,9 +190,48 @@ class Church_App_Notifications_Expo_Push
                                 array('%s'),
                                 array('%s')
                             );
+                        } else {
+                            // Log the per-ticket error with full details
+                            $error_detail = isset($ticket['details']['error']) ? $ticket['details']['error'] : 'unknown';
+                            $error_message = isset($ticket['message']) ? $ticket['message'] : 'no message';
+                            error_log(sprintf(
+                                'Expo push ticket error for token %s: status=%s, error=%s, message=%s',
+                                $token,
+                                $ticket['status'],
+                                $error_detail,
+                                $error_message
+                            ));
+
+                            // Clean up invalid tokens
+                            if (in_array($error_detail, ['DeviceNotRegistered', 'InvalidCredentials'])) {
+                                $wpdb->delete(
+                                    $this->tokens_table,
+                                    array('token' => $token),
+                                    array('%s')
+                                );
+                                error_log('Removed invalid token: ' . $token);
+                            }
+
+                            $success = false;
                         }
                     }
                 }
+
+                // Collect ticket IDs for receipt checking
+                if (isset($body['data'])) {
+                    foreach ($body['data'] as $idx => $ticket) {
+                        if ($ticket['status'] === 'ok' && isset($ticket['id'])) {
+                            $ticket_ids[$ticket['id']] = $chunk[$idx]['to'];
+                        }
+                    }
+                }
+            }
+
+            // Check receipts to catch DeviceNotRegistered errors at the FCM/APNs level
+            if (!empty($ticket_ids)) {
+                // Small delay to let Expo process the tickets
+                sleep(2);
+                $this->check_receipts($ticket_ids);
             }
 
             return $success;
@@ -198,6 +239,58 @@ class Church_App_Notifications_Expo_Push
         } catch (Exception $e) {
             error_log('Error sending Expo push notification: ' . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Check Expo push receipts and clean up invalid tokens
+     */
+    private function check_receipts($ticket_ids)
+    {
+        global $wpdb;
+
+        try {
+            $ids = array_keys($ticket_ids);
+            $response = wp_remote_post('https://exp.host/--/api/v2/push/getReceipts', array(
+                'headers' => array('Content-Type' => 'application/json'),
+                'body' => json_encode(array('ids' => $ids)),
+                'timeout' => 30,
+            ));
+
+            if (is_wp_error($response)) {
+                error_log('Failed to check push receipts: ' . $response->get_error_message());
+                return;
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['data'])) {
+                return;
+            }
+
+            foreach ($body['data'] as $receipt_id => $receipt) {
+                if (isset($receipt['status']) && $receipt['status'] === 'error') {
+                    $error = isset($receipt['details']['error']) ? $receipt['details']['error'] : 'unknown';
+                    $token = isset($ticket_ids[$receipt_id]) ? $ticket_ids[$receipt_id] : 'unknown';
+
+                    error_log(sprintf(
+                        'Expo receipt error for token %s: %s — %s',
+                        $token,
+                        $error,
+                        isset($receipt['message']) ? $receipt['message'] : ''
+                    ));
+
+                    if ($error === 'DeviceNotRegistered' && $token !== 'unknown') {
+                        $wpdb->delete(
+                            $this->tokens_table,
+                            array('token' => $token),
+                            array('%s')
+                        );
+                        error_log('Removed DeviceNotRegistered token via receipt check: ' . $token);
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            error_log('Error checking push receipts: ' . $e->getMessage());
         }
     }
 

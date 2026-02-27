@@ -33,6 +33,13 @@ class Church_App_Notifications_API
             'permission_callback' => '__return_true'
         ));
 
+        // Diagnostic endpoint: check stored tokens for the authenticated user
+        register_rest_route($this->namespace, '/debug/tokens', array(
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => array($this, 'debug_tokens'),
+            'permission_callback' => '__return_true'
+        ));
+
         register_rest_route($this->namespace, '/notifications', array(
             'methods' => WP_REST_Server::READABLE,
             'callback' => array($this, 'get_notifications'),
@@ -140,6 +147,37 @@ class Church_App_Notifications_API
                 )
             )
         ));
+    }
+    /**
+     * Diagnostic endpoint: show stored push tokens for the authenticated user
+     */
+    public function debug_tokens($request)
+    {
+        global $wpdb;
+        $tokens_table = $wpdb->prefix . 'app_push_tokens';
+
+        // Get user from JWT token
+        $user = $this->get_user_from_jwt($request);
+        if (!$user) {
+            return new WP_Error('unauthorized', 'Unauthorized access', array('status' => 401));
+        }
+
+        // Get all tokens for this user
+        $tokens = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, token, device_type, created_at, updated_at, last_used FROM $tokens_table WHERE user_id = %d ORDER BY last_used DESC",
+            $user->ID
+        ));
+
+        // Get total token count in the system
+        $total_tokens = $wpdb->get_var("SELECT COUNT(*) FROM $tokens_table");
+
+        return new WP_REST_Response(array(
+            'user_id' => $user->ID,
+            'user_email' => $user->user_email,
+            'tokens_count' => count($tokens),
+            'total_system_tokens' => (int) $total_tokens,
+            'tokens' => $tokens
+        ), 200);
     }
 
     // Add this function to your class to ensure the plugin is loaded properly
