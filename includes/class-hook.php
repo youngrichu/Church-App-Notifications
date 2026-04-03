@@ -35,7 +35,7 @@ class Church_App_Notifications_Hooks
             return;
         }
 
-        if (!get_option('church_app_auto_notify_new_post', true)) {
+        if (get_option('church_app_auto_notify_new_post', '1') !== '1') {
             return;
         }
 
@@ -92,7 +92,7 @@ class Church_App_Notifications_Hooks
             return;
         }
 
-        if (!get_option('church_app_auto_notify_new_event', true)) {
+        if (get_option('church_app_auto_notify_new_event', '1') !== '1') {
             return;
         }
 
